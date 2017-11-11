@@ -1,4 +1,49 @@
+<a name="5.1.2"></a>
+## [5.1.2](https://github.com/videojs/videojs-contrib-ads/compare/v5.0.4-0...v5.1.2) (2017-11-03)
+
+### Bug Fixes
+
+* snapshot.trackChangeHandler is undefined ([#293](https://github.com/videojs/videojs-contrib-ads/issues/293)) ([8a66140](https://github.com/videojs/videojs-contrib-ads/commit/8a66140))
+
+<a name="5.1.1"></a>
+## [5.1.1](https://github.com/videojs/videojs-contrib-ads/compare/v5.0.4-0...v5.1.1) (2017-11-02)
+
+### Bug Fixes
+
+* snapshot.trackChangeHandler is undefined ([#293](https://github.com/videojs/videojs-contrib-ads/issues/293)) ([8a66140](https://github.com/videojs/videojs-contrib-ads/commit/8a66140))
+
+<a name="5.1.0"></a>
+# [5.1.0](https://github.com/videojs/videojs-contrib-ads/compare/v3.3.13...v5.1.0) (2017-09-12)
+
+### Bug Fixes
+
+* Fix mis-named dists and potentially breaking change in package.json 'main' field. ([#280](https://github.com/videojs/videojs-contrib-ads/issues/280)) ([7633161](https://github.com/videojs/videojs-contrib-ads/commit/7633161))
+* Remove old call to player.load() during snapshot restoration for players which share the video element with the ad integration. This is causing problems in Chrome/Edge with Video.js 6 due to the asynchronous nature of calling player.src(). ([#257](https://github.com/videojs/videojs-contrib-ads/issues/257)) ([afb3ccf](https://github.com/videojs/videojs-contrib-ads/commit/afb3ccf))
+
+### Chores
+
+* Cross-compatibility between Video.js 5 and 6 ([#241](https://github.com/videojs/videojs-contrib-ads/issues/241)) ([eec856a](https://github.com/videojs/videojs-contrib-ads/commit/eec856a))
+
+### Code Refactoring
+
+* Better support for multiple module systems. ([#272](https://github.com/videojs/videojs-contrib-ads/issues/272)) ([0da0c1c](https://github.com/videojs/videojs-contrib-ads/commit/0da0c1c))
+
 # CHANGELOG
+
+## 5.1.0
+
+* [@misteroneill](http://github.com/misteroneill): Better support for multiple module systems
+* [@alex-barstow](http://github.com/alex-barstow): Fix issue where captions were showing during ads on iOS
+
+## 5.0.3
+
+* [@ldayananda](http://github.com/ldayananda): Bugfixes for ad cancellation by cues
+* [@ldayananda](http://github.com/ldayananda): cueTextTracks should always listen to addtrack event
+
+## 5.0.2
+
+* [@incompl](http://github.com/incompl): Fixed dispatching of `loadeddata` and `loadedmetadata` events
+* [@incompl](http://github.com/incompl): Adserror ends linear ad mode
 
 ## 5.0.1
 

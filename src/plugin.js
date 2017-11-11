@@ -12,7 +12,7 @@ import * as snapshot from './snapshot.js';
 import initializeContentupdate from './contentupdate.js';
 import cancelContentPlay from './cancelContentPlay.js';
 import adMacroReplacement from './macros.js';
-import * as cueTextTracks from './cueTextTracks.js';
+import cueTextTracks from './cueTextTracks.js';
 
 const VIDEO_EVENTS = videojs.getTech('Html5').Events;
 
@@ -85,7 +85,7 @@ const contribAdsPlugin = function(options) {
   // If we haven't seen a loadstart after 5 seconds, the plugin was not initialized
   // correctly.
   window.setTimeout(() => {
-    if (!player.ads._hasThereEverBeenALoadStart && player.src() !== '') {
+    if (!player.ads._hasThereBeenALoadStartDuringPlayerLife && player.src() !== '') {
       videojs.log.error('videojs-contrib-ads has not seen a loadstart event 5 seconds ' +
         'after being initialized, but a source is present. This indicates that ' +
         'videojs-contrib-ads was initialized too late. It must be initialized ' +
@@ -142,7 +142,15 @@ const contribAdsPlugin = function(options) {
   });
 
   player.one('loadstart', () => {
-    player.ads._hasThereEverBeenALoadStart = true;
+    player.ads._hasThereBeenALoadStartDuringPlayerLife = true;
+  });
+
+  player.on('loadeddata', () => {
+    player.ads._hasThereBeenALoadedData = true;
+  });
+
+  player.on('loadedmetadata', () => {
+    player.ads._hasThereBeenALoadedMetaData = true;
   });
 
   // Replace the plugin constructor with the ad namespace
@@ -160,8 +168,16 @@ const contribAdsPlugin = function(options) {
     _contentHasEnded: false,
 
     // Tracks if loadstart has happened yet for the initial source. It is not reset
-    // on source changes.
-    _hasThereEverBeenALoadStart: false,
+    // on source changes because loadstart is the event that signals to the ad plugin
+    // that the source has changed. Therefore, no special signaling is needed to know
+    // that there has been one for subsequent sources.
+    _hasThereBeenALoadStartDuringPlayerLife: false,
+
+    // Tracks if loadeddata has happened yet for the current source.
+    _hasThereBeenALoadedData: false,
+
+    // Tracks if loadedmetadata has happened yet for the current source.
+    _hasThereBeenALoadedMetaData: false,
 
     // Are we after startLinearAdMode and before endLinearAdMode?
     _inLinearAdMode: false,
@@ -179,6 +195,9 @@ const contribAdsPlugin = function(options) {
       player.ads._contentHasEnded = false;
       player.ads.snapshot = null;
       player.ads.adType = null;
+      player.ads._hasThereBeenALoadedData = false;
+      player.ads._hasThereBeenALoadedMetaData = false;
+      player.ads._cancelledPlay = false;
     },
 
     // Call this when an ad response has been received and there are
@@ -380,7 +399,7 @@ const contribAdsPlugin = function(options) {
           }, settings.prerollTimeout);
 
           // Signal to ad plugin that it's their opportunity to play a preroll
-          if (player.ads._hasThereEverBeenALoadStart) {
+          if (player.ads._hasThereBeenALoadStartDuringPlayerLife) {
             player.trigger('readyforpreroll');
 
           // Don't play preroll before loadstart, otherwise the content loadstart event
@@ -513,9 +532,7 @@ const contribAdsPlugin = function(options) {
           player.ads.adType = null;
         },
         adserror() {
-          this.state = 'content-resuming';
-          // Trigger 'adend' to notify that we are exiting 'ad-playback'
-          player.trigger('adend');
+          player.ads.endLinearAdMode();
         }
       }
     },
@@ -646,16 +663,6 @@ const contribAdsPlugin = function(options) {
           }
         },
         contentupdate() {
-          // We know sources have changed, so we call CancelContentPlay
-          // to avoid playback of video in the background of an ad. Playback Occurs on
-          // Android devices if we do not call cancelContentPlay. This is because
-          // the sources do not get updated in time on Android due to timing issues.
-          // So instead of checking if the sources have changed in the play handler
-          // and calling cancelContentPlay() there we call it here.
-          // This does not happen on Desktop as the sources do get updated in time.
-          if (!player.ads.shouldPlayContentBehindAd(player)) {
-            cancelContentPlay(player);
-          }
           if (player.paused()) {
             this.state = 'content-set';
           } else {
@@ -724,6 +731,47 @@ const contribAdsPlugin = function(options) {
 
   };
 
+  // A utility method for textTrackChangeHandler to define the conditions
+  // when text tracks should be disabled.
+  // Currently this includes:
+  //  - on iOS with native text tracks, during an ad playing
+  const shouldDisableTracks = function() {
+    // If the platform matches iOS with native text tracks
+    // and this occurs during ad playback, we should disable tracks again.
+    // If shouldPlayContentBehindAd, no special handling is needed.
+    return !player.ads.shouldPlayContentBehindAd(player) &&
+            player.ads.isAdPlaying() &&
+            player.tech_.featuresNativeTextTracks &&
+            videojs.browser.IS_IOS &&
+            // older versions of video.js did not use an emulated textTrackList
+            !Array.isArray(player.textTracks());
+  };
+
+  /**
+   * iOS Safari will change caption mode to 'showing' if a user previously
+   * turned captions on manually for that video source, so this TextTrackList
+   * 'change' event handler will re-disable them in case that occurs during ad playback
+   */
+  const textTrackChangeHandler = function() {
+    const textTrackList = player.textTracks();
+
+    if (shouldDisableTracks()) {
+      // We must double check all tracks
+      for (let i = 0; i < textTrackList.length; i++) {
+        const track = textTrackList[i];
+
+        if (track.mode === 'showing') {
+          track.mode = 'disabled';
+        }
+      }
+    }
+  };
+
+  // Add the listener to the text track list
+  player.ready(function() {
+    player.textTracks().addEventListener('change', textTrackChangeHandler);
+  });
+
   // Register our handler for the events that the state machine will process
   player.on(VIDEO_EVENTS.concat([
     // Events emitted by this plugin
@@ -747,7 +795,7 @@ const contribAdsPlugin = function(options) {
 
   ]), processEvent);
 
-  // Clear timeouts when player is disposed
+  // Clear timeouts and handlers when player is disposed
   player.on('dispose', function() {
     if (player.ads.adTimeoutTimeout) {
       window.clearTimeout(player.ads.adTimeoutTimeout);
@@ -764,6 +812,8 @@ const contribAdsPlugin = function(options) {
     if (player.ads.tryToResumeTimeout_) {
       player.clearTimeout(player.ads.tryToResumeTimeout_);
     }
+
+    player.textTracks().removeEventListener('change', textTrackChangeHandler);
   });
 
   // If we're autoplaying, the state machine will immidiately process
@@ -778,3 +828,5 @@ const registerPlugin = videojs.registerPlugin || videojs.plugin;
 
 // Register this plugin with videojs
 registerPlugin('ads', contribAdsPlugin);
+
+export default contribAdsPlugin;

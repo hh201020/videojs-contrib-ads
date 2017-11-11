@@ -1,5 +1,3 @@
-(function(window, QUnit) {
-
 var timerExists = function(env, keyOrId) {
   var timerId = _.isNumber(keyOrId) ? keyOrId : env.player.ads[String(keyOrId)];
   return env.clock.timers.hasOwnProperty(String(timerId));
@@ -1162,4 +1160,49 @@ QUnit.test('Plugin sets adType as expected', function(assert) {
   assert.strictEqual(this.player.ads.adType, 'preroll');
 });
 
-}(window, window.QUnit));
+QUnit.test('adserror ends linear ad mode ', function(assert) {
+  assert.strictEqual(this.player.ads._inLinearAdMode, false, 'before ad');
+  this.player.trigger('play');
+  this.player.trigger('adsready');
+  this.player.ads.startLinearAdMode();
+  assert.strictEqual(this.player.ads._inLinearAdMode, true, 'during ad');
+  this.player.trigger('adserror');
+  assert.strictEqual(this.player.ads._inLinearAdMode, false, 'after adserror');
+});
+
+if (videojs.browser.IS_IOS) {
+  QUnit.test('Check the textTrackChangeHandler takes effect on iOS', function(assert) {
+    const tracks = this.player.textTracks();
+
+    // Since addTextTrack is async, wait for the addtrack event
+    tracks.on('addtrack', function() {
+
+      // Confirm the track is added, set the mode to showing
+      assert.equal(tracks.length, 1);
+      tracks[0].mode = 'showing';
+      assert.equal(tracks[0].mode, 'showing',  'Initial state is showing');
+
+      // Start the ad, confirm the track is disabled
+      this.player.ads.startLinearAdMode();
+      assert.equal(tracks[0].mode, 'disabled', 'Snapshot sets tracks to disabled');
+
+      // Force the mode to showing
+      tracks[0].mode = 'showing';
+
+    }.bind(this));
+
+    // The mode should go back to disabled when the change event happens as
+    // during ad playback we do not want the content captions to be visible on iOS
+    tracks.on('change', function() {
+      assert.equal(tracks[0].mode, 'disabled', 'Mode is reset to disabled');
+
+      // End the ad, check the track mode is showing again
+      this.player.ads.endLinearAdMode();
+      assert.equal(tracks[0].mode, 'showing', 'Mode is restored after ad');
+    }.bind(this));
+
+    this.player.trigger('play');
+    this.player.trigger('adsready');
+    this.player.addTextTrack('captions', 'English', 'en');
+  });
+}

@@ -343,41 +343,6 @@ QUnit.test('When captions are enabled, the video\'s tracks will be disabled duri
   assert.strictEqual(showing, tracks.length, 'all tracks should be showing');
 });
 
-QUnit.test('player events during snapshot restoration are prefixed', function(assert) {
-  var spy = sinon.spy();
-
-  assert.expect(2);
-
-  this.player.on(['contentloadstart', 'contentloadedmetadata'], spy);
-
-  this.player.src({
-    src: 'http://example.com/movie.mp4',
-    type: 'video/mp4'
-  });
-
-  this.player.on('readyforpreroll', function() {
-    this.ads.startLinearAdMode();
-  });
-
-  this.player.trigger('adsready');
-  this.player.trigger('play');
-
-  this.player.currentSrc = function() {
-    return 'http://example.com/movie.mp4';
-  };
-
-  this.player.ads.contentSrc = 'somethingelse';
-  this.player.trigger('loadstart');
-  assert.strictEqual(spy.callCount, 0, 'did not fire contentloadstart');
-  this.player.ads.endLinearAdMode();
-
-  // make it appear that the tech is ready to seek
-  this.player.ads.contentSrc = 'http://example.com/movie.mp4';
-  this.player.trigger('loadstart');
-  this.player.trigger('loadedmetadata');
-  assert.strictEqual(spy.callCount, 2, 'fired "content" prefixed events');
-});
-
 QUnit.test('No snapshot if duration is Infinity', function(assert) {
   var originalSrc = 'foobar';
   var newSrc = 'barbaz';
@@ -412,12 +377,15 @@ QUnit.test('Snapshot and text tracks', function(assert) {
       label: label,
       language: language,
       mode: 'showing',
-      addEventListener: function() {}
+      addEventListener: function() {},
+      removeEventListener: function() {}
     });
   }
   this.player.textTracks = function() {
     return mockTracks;
   }
+  this.player.textTracks().addEventListener = function() {};
+  this.player.textTracks().removeEventListener = function() {};
 
   // Add a text track
   this.player.addRemoteTextTrack({
@@ -470,6 +438,11 @@ QUnit.test('Snapshot and text tracks', function(assert) {
   assert.equal(this.player.textTracks().length, 1);
   assert.equal(this.player.textTracks()[0].kind, 'captions');
   assert.equal(this.player.textTracks()[0].language, 'es');
+  assert.equal(this.player.textTracks()[0].mode, 'disabled');
+
+  // Double check that the track remains disabled after 3s
+  this.clock.tick(3000);
+  assert.equal(this.player.remoteTextTracks()[0].mode, 'disabled');
   assert.equal(this.player.textTracks()[0].mode, 'disabled');
 
   // Restore the snapshot, as if an ad is ending

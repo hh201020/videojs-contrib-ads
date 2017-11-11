@@ -3,18 +3,16 @@ module.exports = function(config) {
     enabled: false,
     usePhantomJS: false,
     postDetection: function(browsers) {
-      var i = browsers.indexOf('Safari');
-
-      if (i !== -1) {
-        browsers.splice(i, 1);
-      }
-
-      return browsers;
+      const toRemove = ['Safari', 'SafariTechPreview'];
+      return browsers.filter((e) => {
+        return toRemove.indexOf(e) === -1;
+      });
     }
   };
 
+  // On Travis CI, we can only run in Firefox and Chrome; so, enforce that.
   if (process.env.TRAVIS) {
-    config.browsers = ['travisChrome'];
+    config.browsers = ['Firefox', 'travisChrome'];
   }
 
   // If no browsers are specified, we enable `karma-detect-browsers`
@@ -26,15 +24,14 @@ module.exports = function(config) {
   config.set({
     basePath: '..',
     frameworks: ['qunit', 'detectBrowsers'],
-
     files: [
-      'node_modules/lodash/index.js',
-      'node_modules/sinon/pkg/sinon.js',
-      'node_modules/sinon/pkg/sinon-ie.js',
-      'node_modules/video.js/dist/video.js',
       'node_modules/video.js/dist/video-js.css',
-      'dist/videojs.ads.js',
-      'dist/videojs.ads.css',
+      'node_modules/lodash/lodash.js',
+      'node_modules/es5-shim/es5-shim.js',
+      'node_modules/sinon/pkg/sinon.js',
+      'node_modules/video.js/dist/video.js',
+      'dist/videojs-contrib-ads.js',
+      'dist/videojs-contrib-ads.css',
       'test/shared-module-hooks.js',
       'test/dist/bundle.js',
 
@@ -55,7 +52,7 @@ module.exports = function(config) {
     autoWatch: false,
     singleRun: true,
     concurrency: 1,
-    browserNoActivityTimeout: 20000,
+    browserNoActivityTimeout: 300000,
     client: {
       qunit: {
         testTimeout: 10000
@@ -63,4 +60,3 @@ module.exports = function(config) {
     }
   });
 };
-
