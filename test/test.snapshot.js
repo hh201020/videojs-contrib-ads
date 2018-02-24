@@ -150,7 +150,6 @@ QUnit.test('snapshot does not resume playback after post-rolls', function(assert
   this.player.ads.endLinearAdMode();
   this.player.trigger('playing');
   this.player.trigger('ended');
-  assert.strictEqual(this.player.ads.state, 'content-playback', 'Player should be in content-playback state after a post-roll');
   assert.strictEqual(playSpy.callCount, 0, 'content playback should not have been resumed');
 });
 
@@ -182,7 +181,6 @@ QUnit.test('snapshot does not resume playback after a burned-in post-roll', func
   this.player.currentTime(50);
   this.player.ads.endLinearAdMode();
   this.player.trigger('ended');
-  assert.strictEqual(this.player.ads.state, 'content-playback', 'Player should be in content-playback state after a post-roll');
   assert.strictEqual(this.player.currentTime(), 50, 'currentTime should not be reset using burned in ads');
   assert.notOk(loadSpy.called, 'player.load() should not be called if the player is ended.');
   assert.notOk(playSpy.called, 'content playback should not have been resumed');
@@ -224,7 +222,6 @@ QUnit.test('snapshot does not resume playback after multiple post-rolls', functi
   this.player.ads.endLinearAdMode();
   this.player.trigger('playing');
   this.player.trigger('ended');
-  assert.strictEqual(this.player.ads.state, 'content-playback', 'Player should be in content-playback state after a post-roll');
   assert.notOk(playSpy.called, 'content playback should not resume');
 });
 
@@ -249,7 +246,6 @@ QUnit.test('changing the source and then timing out does not restore a snapshot'
   this.player.src('http://example.com/movie2.mp4');
   this.player.trigger('loadstart');
   this.player.trigger('adtimeout');
-  assert.strictEqual(this.player.ads.state, 'content-playback', 'playing the new content video after the ad timeout');
   assert.strictEqual('http://example.com/movie2.mp4', this.player.currentSrc(), 'playing the second video');
 });
 
@@ -295,7 +291,18 @@ QUnit.test('checks for a src attribute change that isn\'t reflected in currentSr
 });
 
 QUnit.test('When captions are enabled, the video\'s tracks will be disabled during the ad', function(assert) {
-  var tracks = this.player.remoteTextTracks ? this.player.remoteTextTracks() : [];
+  const trackSrc = 'http://solutions.brightcove.com/' +
+      'bcls/captions/adding_captions_to_videos_french.vtt';
+
+  // Add a text track
+  this.player.addRemoteTextTrack({
+    kind: 'captions',
+    language: 'fr',
+    label: 'French',
+    src: trackSrc
+  });
+
+  var tracks = this.player.textTracks ? this.player.textTracks() : [];
   var showing = 0;
   var disabled = 0;
   var i;
@@ -334,6 +341,7 @@ QUnit.test('When captions are enabled, the video\'s tracks will be disabled duri
   assert.strictEqual(disabled, tracks.length, 'all tracks should be disabled');
   this.player.ads.endLinearAdMode();
 
+  // Track mode should be restored after the ad ends
   for (i = 0; i < tracks.length; i++) {
     if (tracks[i].mode === 'showing') {
       showing++;
@@ -363,29 +371,11 @@ QUnit.test('Snapshot and text tracks', function(assert) {
     'bcls/captions/adding_captions_to_videos_french.vtt';
   const originalAddTrack = this.player.addTextTrack;
   const originalTextTracks = this.player.textTracks;
-  let mockTracks = [];
 
   // No text tracks at start
-  assert.equal(this.player.remoteTextTracks().length, 0);
   assert.equal(this.player.textTracks().length, 0);
 
-  // This is mocked because of native text track behavior
-  // which may not have the added track available immediately
-  this.player.addTextTrack = function(kind, label, language) {
-    mockTracks.push({
-      kind: kind,
-      label: label,
-      language: language,
-      mode: 'showing',
-      addEventListener: function() {},
-      removeEventListener: function() {}
-    });
-  }
-  this.player.textTracks = function() {
-    return mockTracks;
-  }
-  this.player.textTracks().addEventListener = function() {};
-  this.player.textTracks().removeEventListener = function() {};
+  this.player.addTextTrack('captions', 'Spanish', 'es');
 
   // Add a text track
   this.player.addRemoteTextTrack({
@@ -395,70 +385,63 @@ QUnit.test('Snapshot and text tracks', function(assert) {
     src: trackSrc
   });
 
-  this.player.addTextTrack('captions', 'Spanish', 'es');
-
-  // Show our new text track, since it's disabled by default
-  this.player.remoteTextTracks()[0].mode = 'showing';
-
+  // Make sure both track modes are 'showing', since it's 'disabled' by default
   this.player.textTracks()[0].mode = 'showing';
+  this.player.textTracks()[1].mode = 'showing';
 
   // Text track looks good
-  assert.equal(this.player.remoteTextTracks().length, 1);
-  assert.equal(this.player.remoteTextTrackEls().trackElements_[0].src, trackSrc);
-  assert.equal(this.player.remoteTextTracks()[0].kind, 'captions');
-  assert.equal(this.player.remoteTextTracks()[0].language, 'fr');
-  assert.equal(this.player.remoteTextTracks()[0].mode, 'showing');
-
-  assert.equal(this.player.textTracks().length, 1);
+  assert.equal(this.player.textTracks().length, 2);
   assert.equal(this.player.textTracks()[0].kind, 'captions');
   assert.equal(this.player.textTracks()[0].language, 'es');
   assert.equal(this.player.textTracks()[0].mode, 'showing');
+
+  assert.equal(this.player.remoteTextTrackEls().trackElements_[0].src, trackSrc);
+  assert.equal(this.player.textTracks()[1].kind, 'captions');
+  assert.equal(this.player.textTracks()[1].language, 'fr');
+  assert.equal(this.player.textTracks()[1].mode, 'showing');
 
   // Do a snapshot, as if an ad is starting
   this.player.ads.snapshot = snapshot.getPlayerSnapshot(this.player);
 
   // Snapshot reflects the text track
-  assert.equal(this.player.ads.snapshot.suppressedRemoteTracks.length, 1);
-  assert.equal(this.player.ads.snapshot.suppressedRemoteTracks[0].track.kind, 'captions');
-  assert.equal(this.player.ads.snapshot.suppressedRemoteTracks[0].track.language, 'fr');
-  assert.equal(this.player.ads.snapshot.suppressedRemoteTracks[0].mode, 'showing');
-
-  assert.equal(this.player.ads.snapshot.suppressedTracks.length, 1);
+  assert.equal(this.player.ads.snapshot.suppressedTracks.length, 2);
   assert.equal(this.player.ads.snapshot.suppressedTracks[0].track.kind, 'captions');
   assert.equal(this.player.ads.snapshot.suppressedTracks[0].track.language, 'es');
   assert.equal(this.player.ads.snapshot.suppressedTracks[0].mode, 'showing');
 
-  // Meanwhile, track is intact, just disabled
-  assert.equal(this.player.remoteTextTracks().length, 1);
-  assert.equal(this.player.remoteTextTrackEls().trackElements_[0].src, trackSrc);
-  assert.equal(this.player.remoteTextTracks()[0].kind, 'captions');
-  assert.equal(this.player.remoteTextTracks()[0].language, 'fr');
-  assert.equal(this.player.remoteTextTracks()[0].mode, 'disabled');
+  assert.equal(this.player.ads.snapshot.suppressedTracks[1].track.kind, 'captions');
+  assert.equal(this.player.ads.snapshot.suppressedTracks[1].track.language, 'fr');
+  assert.equal(this.player.ads.snapshot.suppressedTracks[1].mode, 'showing');
 
-  assert.equal(this.player.textTracks().length, 1);
+  // Meanwhile, track is intact, just disabled
+  assert.equal(this.player.textTracks().length, 2);
   assert.equal(this.player.textTracks()[0].kind, 'captions');
   assert.equal(this.player.textTracks()[0].language, 'es');
   assert.equal(this.player.textTracks()[0].mode, 'disabled');
 
+  assert.equal(this.player.remoteTextTrackEls().trackElements_[0].src, trackSrc);
+  assert.equal(this.player.textTracks()[1].kind, 'captions');
+  assert.equal(this.player.textTracks()[1].language, 'fr');
+  assert.equal(this.player.textTracks()[1].mode, 'disabled');
+
   // Double check that the track remains disabled after 3s
   this.clock.tick(3000);
-  assert.equal(this.player.remoteTextTracks()[0].mode, 'disabled');
   assert.equal(this.player.textTracks()[0].mode, 'disabled');
+  assert.equal(this.player.textTracks()[1].mode, 'disabled');
 
   // Restore the snapshot, as if an ad is ending
   snapshot.restorePlayerSnapshot(this.player, this.player.ads.snapshot);
 
   // Everything is back to normal
-  assert.equal(this.player.remoteTextTracks().length, 1);
-  assert.equal(this.player.remoteTextTrackEls().trackElements_[0].src, trackSrc);
-  assert.equal(this.player.remoteTextTracks()[0].kind, 'captions');
-  assert.equal(this.player.remoteTextTracks()[0].language, 'fr');
-  assert.equal(this.player.remoteTextTracks()[0].mode, 'showing');
-
-  assert.equal(this.player.textTracks().length, 1);
+  assert.equal(this.player.textTracks().length, 2);
   assert.equal(this.player.textTracks()[0].kind, 'captions');
   assert.equal(this.player.textTracks()[0].language, 'es');
   assert.equal(this.player.textTracks()[0].mode, 'showing');
+  
+  assert.equal(this.player.remoteTextTrackEls().trackElements_[0].src, trackSrc);
+  assert.equal(this.player.textTracks()[1].kind, 'captions');
+  assert.equal(this.player.textTracks()[1].language, 'fr');
+  assert.equal(this.player.textTracks()[1].mode, 'showing');
 
   // Resetting mocked methods
   this.player.addTextTrack = originalAddTrack;
